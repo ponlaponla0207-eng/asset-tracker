@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>個人資產追蹤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:      #f7f6f3;
+    --surface: #ffffff;
+    --border:  rgba(0,0,0,0.08);
+    --text:    #1a1a18;
+    --muted:   #7a7a74;
+    --accent:  #2d5be3;
+    --green:   #1a9e6e;
+    --red:     #d94f30;
+    --amber:   #ba7517;
+    --purple:  #6b4fcf;
+    --radius:  10px;
+    --mono:    'DM Mono', monospace;
+    --sans:    'DM Sans', sans-serif;
+  }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 15px; line-height: 1.6; }
+  .shell { max-width: 940px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+  /* header */
+  .site-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 2rem; flex-wrap: wrap; gap: 8px; }
+  .site-title  { font-size: 22px; font-weight: 500; letter-spacing: -0.3px; }
+  .site-sub    { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sync-badge  { font-size: 11px; font-family: var(--mono); color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .sync-dot    { width: 7px; height: 7px; border-radius: 50%; background: #ccc; flex-shrink: 0; transition: background .3s; }
+  .sync-dot.ok      { background: var(--green); }
+  .sync-dot.err     { background: var(--red); }
+  .sync-dot.loading { background: var(--amber); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+  .export-btn { font-size: 12px; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 7px; padding: 5px 12px; cursor: pointer; font-family: var(--sans); }
+  .export-btn:hover { background: var(--surface); }
+
+  /* config banner */
+  .config-banner { background: #fff8e6; border: 1px solid #f0c040; border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1.5rem; font-size: 13px; line-height: 1.7; }
+  .config-banner strong { color: #7a5000; }
+  .config-banner code { background: rgba(0,0,0,.07); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
+
+  /* loading */
+  .loading-bar { height: 2px; background: linear-gradient(90deg,transparent,var(--accent),transparent); background-size: 200%; animation: shimmer 1.2s infinite; margin-bottom: 1rem; border-radius: 2px; display: none; }
+  .loading-bar.show { display: block; }
+  @keyframes shimmer { 0%{background-position:200%}100%{background-position:-200%} }
+
+  /* tabs */
+  .tabs { display: flex; gap: 2px; background: rgba(0,0,0,0.06); border-radius: var(--radius); padding: 3px; width: fit-content; margin-bottom: 1.75rem; }
+  .tab { padding: 6px 18px; font-size: 13px; border-radius: 8px; cursor: pointer; color: var(--muted); border: none; background: transparent; font-family: var(--sans); transition: all .15s; }
+  .tab.active { background: var(--surface); color: var(--text); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  /* metrics */
+  .metrics { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-bottom: 1.25rem; }
+  @media(max-width:700px){ .metrics { grid-template-columns: repeat(2,1fr); } }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.1rem; }
+  .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .metric-value { font-size: 19px; font-weight: 500; font-family: var(--mono); }
+  .metric-sub   { font-size: 11px; font-family: var(--mono); margin-top: 3px; color: var(--muted); }
+  .positive { color: var(--green) !important; }
+  .negative { color: var(--red)   !important; }
+
+  /* goal banner */
+  .goal-banner { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+  .goal-info   { flex: 1; min-width: 200px; }
+  .goal-title  { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .goal-nums   { font-size: 13px; font-family: var(--mono); color: var(--text); margin-bottom: 8px; }
+  .goal-nums span { color: var(--accent); font-weight: 500; }
+  .progress-track { height: 6px; background: rgba(0,0,0,0.07); border-radius: 99px; overflow: hidden; }
+  .progress-fill  { height: 100%; border-radius: 99px; background: var(--accent); transition: width .6s ease; }
+  .goal-meta   { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-top: 5px; }
+  .goal-edit-btn { font-size: 12px; color: var(--accent); background: none; border: 1px solid rgba(45,91,227,.25); border-radius: 7px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+  .goal-edit-btn:hover { background: rgba(45,91,227,.06); }
+
+  /* charts */
+  .charts-row  { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-bottom: 1rem; }
+  .savings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+  @media(max-width:620px){ .charts-row, .savings-row { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+  .card-title { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 1rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .legend-dot  { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* form */
+  .form-card  { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1rem; }
+  .form-title { font-size: 15px; font-weight: 500; margin-bottom: .35rem; }
+  .form-hint  { font-size: 12px; color: var(--muted); margin-bottom: 1.1rem; font-family: var(--mono); }
+  .form-section-label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 1.1rem 0 .6rem; border-top: 1px solid var(--border); padding-top: .9rem; }
+  .form-grid  { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 12px; }
+  .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .form-group input { width: 100%; padding: 8px 10px; font-size: 14px; font-family: var(--mono); border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); outline: none; transition: border .15s; }
+  .form-group input:focus { border-color: var(--accent); }
+  .debt-input input { border-color: rgba(217,79,48,.3); }
+  .debt-input input:focus { border-color: var(--red); }
+
+  /* buttons */
+  .btn         { padding: 8px 20px; font-size: 13px; font-family: var(--sans); border-radius: 7px; cursor: pointer; transition: all .15s; border: 1px solid transparent; font-weight: 500; }
+  .btn-primary { background: var(--text); color: #fff; }
+  .btn-primary:hover { opacity: .85; }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-ghost   { background: transparent; color: var(--red); border-color: rgba(217,79,48,.3); font-size: 12px; padding: 4px 10px; }
+  .btn-ghost:hover { background: rgba(217,79,48,.06); }
+  .btn-cancel  { background: none; border: 1px solid var(--border); color: var(--muted); }
+  .btn-sm      { padding: 6px 14px; font-size: 13px; }
+  .save-msg    { font-size: 12px; font-family: var(--mono); display: none; }
+  .save-msg.ok  { color: var(--green); }
+  .save-msg.err { color: var(--red); }
+
+  /* table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; padding: 8px 6px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 6px 10px 0; border-bottom: 1px solid var(--border); font-family: var(--mono); color: var(--text); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.label-col { font-family: var(--sans); font-weight: 500; }
+
+  /* modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .modal-box { background: var(--surface); border-radius: var(--radius); padding: 1.5rem; width: 340px; max-width: 90vw; box-shadow: 0 8px 30px rgba(0,0,0,.15); }
+  .modal-title { font-size: 15px; font-weight: 500; margin-bottom: 1rem; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 1.25rem; justify-content: flex-end; }
+
+  .empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 14px; }
+  .empty-icon { font-size: 28px; margin-bottom: 8px; opacity: .5; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ★ 將 YOUR_SCRIPT_URL 換成你的 Apps Script 部署網址 -->
+  <script>const API_URL = "YOUR_SCRIPT_URL";</script>
+
+  <header class="site-header">
+    <div>
+      <div class="site-title">個人資產追蹤</div>
+      <div class="site-sub">Personal Asset Tracker</div>
+    </div>
+    <div class="header-right">
+      <button class="export-btn" onclick="exportCSV()">匯出 CSV</button>
+      <div class="sync-badge">
+        <span class="sync-dot" id="syncDot"></span>
+        <span id="syncLabel">連線中...</span>
+      </div>
+    </div>
+  </header>
+
+  <div id="configBanner" class="config-banner" style="display:none">
+    <strong>⚠️ 尚未設定 API</strong><br>
+    請用文字編輯器打開此 HTML 檔，找到 <code>const API_URL = "YOUR_SCRIPT_URL"</code>，
+    將 <code>YOUR_SCRIPT_URL</code> 換成你的 Apps Script 部署網址後存檔，再重新開啟即可。
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('dashboard')">總覽</button>
+    <button class="tab" onclick="switchTab('entry')">新增紀錄</button>
+    <button class="tab" onclick="switchTab('history')">歷史資料</button>
+  </div>
+
+  <div class="loading-bar" id="loadingBar"></div>
+
+  <!-- ══ DASHBOARD ══ -->
+  <div id="tab-dashboard">
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">總資產</div><div class="metric-value" id="m-total">—</div><div class="metric-sub" id="m-total-sub"></div></div>
+      <div class="metric"><div class="metric-label">負債</div><div class="metric-value" id="m-debt">—</div><div class="metric-sub" id="m-debt-sub"></div></div>
+      <div class="metric"><div class="metric-label">淨資產</div><div class="metric-value" id="m-net">—</div><div class="metric-sub" id="m-net-sub"></div></div>
+      <div class="metric"><div class="metric-label">月儲蓄率</div><div class="metric-value" id="m-savings">—</div><div class="metric-sub" id="m-savings-sub"></div></div>
+      <div class="metric"><div class="metric-label">年化成長率</div><div class="metric-value" id="m-cagr">—</div><div class="metric-sub" id="m-cagr-sub" style="color:var(--muted)"></div></div>
+    </div>
+
+    <div class="goal-banner" id="goalBanner" style="display:none">
+      <div class="goal-info">
+        <div class="goal-title">目標進度</div>
+        <div class="goal-nums" id="goalNums"></div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        <div class="goal-meta" id="goalMeta"></div>
+      </div>
+      <button class="goal-edit-btn" onclick="openGoalModal()">設定目標</button>
+    </div>
+
+    <div id="empty-dashboard" class="empty" style="display:none">
+      <div class="empty-icon">📊</div>
+      尚無資料，請先新增第一筆紀錄<br><br>
+      <button class="btn btn-primary" onclick="switchTab('entry')">新增紀錄</button>
+    </div>
+
+    <div id="charts-wrap" style="display:none">
+      <div class="charts-row">
+        <div class="card">
+          <div class="card-title">資產 vs 負債走勢</div>
+          <div class="legend" id="line-legend"></div>
+          <div style="position:relative;height:210px"><canvas id="lineChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">目前資產配置</div>
+          <div style="position:relative;height:175px"><canvas id="pieChart"></canvas></div>
+          <div class="legend" id="pie-legend" style="margin-top:10px;justify-content:center"></div>
+        </div>
+      </div>
+      <div class="savings-row">
+        <div class="card">
+          <div class="card-title">月儲蓄率趨勢（%）</div>
+          <div style="position:relative;height:150px"><canvas id="savingsChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">淨資產月增減（萬元）</div>
+          <div style="position:relative;height:150px"><canvas id="barChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ENTRY ══ -->
+  <div id="tab-entry" style="display:none">
+    <div class="form-card">
+      <div class="form-title">新增 / 更新月份紀錄</div>
+      <div class="form-hint">相同月份再次儲存會覆蓋舊資料。單位：萬元（新台幣）</div>
+      <div class="form-grid">
+        <div class="form-group"><label>年月</label><input type="month" id="input-month"></div>
+        <div class="form-group"><label>月收入（選填）</label><input type="number" id="input-income" placeholder="0" min="0" step="0.1"></div>
+      </div>
+      <div class="form-section-label">資產</div>
+      <div class="form-grid">
+        <div class="form-group"><label>現金 / 存款</label><input type="number" id="input-cash" placeholder="0" min="0" step="0.1"></div>
+        <div class="form-group"><label>股票 / 基金</label><input type="number" id="input-stock" placeholder="0" min="0" step="0.1"></div>
+        <div class="form-group"><label>房地產</label><input type="number" id="input-re" placeholder="0" min="0" step="0.1"></div>
+      </div>
+      <div class="form-section-label">負債</div>
+      <div class="form-grid">
+        <div class="form-group debt-input"><label>負債總額（房貸、信貸等）</label><input type="number" id="input-debt" placeholder="0" min="0" step="0.1"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:1.25rem">
+        <button class="btn btn-primary" id="saveBtn" onclick="saveEntry()">儲存紀錄</button>
+        <span class="save-msg" id="saveMsg"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ HISTORY ══ -->
+  <div id="tab-history" style="display:none">
+    <div class="form-card">
+      <div class="form-title" style="margin-bottom:1rem">歷史資料</div>
+      <div class="table-wrap" id="history-content">
+        <div class="empty"><div class="empty-icon">📂</div>尚無資料</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ GOAL MODAL ══ -->
+  <div class="modal-overlay" id="goalModal" style="display:none" onclick="bgClose(event)">
+    <div class="modal-box">
+      <div class="modal-title">設定財務目標</div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>目標淨資產（萬元）</label>
+        <input type="number" id="goal-net" placeholder="1000" min="1" step="10">
+      </div>
+      <div class="form-group">
+        <label>目標達成年份</label>
+        <input type="number" id="goal-year" placeholder="2035" min="2024" max="2100">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-sm btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary btn-sm" id="goalSaveBtn" onclick="saveGoal()">儲存</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const COLORS = { cash:'#2d5be3', stock:'#1a9e6e', realEstate:'#ba7517', debt:'#d94f30', net:'#1a1a18', purple:'#6b4fcf' };
+let lineChart, pieChart, barChart, savingsChart;
+let cachedData = [], cachedGoal = null;
+
+// ── API ─────────────────────────────────────────────────
+async function api(action, body = {}) {
+  if (API_URL === "YOUR_SCRIPT_URL") {
+    document.getElementById('configBanner').style.display = 'block';
+    setSyncStatus('err', '未設定 API');
+    return null;
+  }
+  setLoading(true);
+  try {
+    const isGet = action === 'getAll' || action === 'getGoal';
+    const url   = isGet ? `${API_URL}?action=${action}` : API_URL;
+    const opts  = isGet ? {} : {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...body })
+    };
+    const res  = await fetch(url, opts);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    setSyncStatus('ok', '已同步');
+    return json;
+  } catch(e) {
+    setSyncStatus('err', '連線失敗');
+    console.error(e);
+    return null;
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setSyncStatus(state, label) {
+  document.getElementById('syncDot').className = 'sync-dot ' + state;
+  document.getElementById('syncLabel').textContent = label;
+}
+function setLoading(on) {
+  document.getElementById('loadingBar').className = 'loading-bar' + (on ? ' show' : '');
+}
+
+// ── Tabs ────────────────────────────────────────────────
+function switchTab(tab) {
+  ['dashboard','entry','history'].forEach(t =>
+    document.getElementById('tab-'+t).style.display = t === tab ? 'block' : 'none'
+  );
+  document.querySelectorAll('.tab').forEach((el,i) =>
+    el.classList.toggle('active', ['dashboard','entry','history'][i] === tab)
+  );
+  if (tab === 'dashboard') renderDashboard();
+  if (tab === 'history')   renderHistory();
+}
+
+// ── Helpers ─────────────────────────────────────────────
+const fmtN = (n, s='萬') => (n == null || isNaN(n)) ? '—' : (n >= 0 ? '' : '-') + Math.abs(n).toFixed(1) + s;
+const fmtP = n => !isFinite(n) ? '—' : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+
+// ── Load ────────────────────────────────────────────────
+async function loadAll() {
+  setSyncStatus('loading', '同步中...');
+  const [dataRes, goalRes] = await Promise.all([api('getAll'), api('getGoal')]);
+  if (dataRes) cachedData = (dataRes.data || []).sort((a,b) => a.month.localeCompare(b.month));
+  if (goalRes) cachedGoal = goalRes.goal || null;
+}
+
+// ── Dashboard ───────────────────────────────────────────
+async function renderDashboard() {
+  await loadAll();
+  const data   = cachedData;
+  const empty  = document.getElementById('empty-dashboard');
+  const wrap   = document.getElementById('charts-wrap');
+  const banner = document.getElementById('goalBanner');
+
+  if (!data.length) {
+    empty.style.display = 'block'; wrap.style.display = 'none'; banner.style.display = 'none';
+    ['m-total','m-debt','m-net','m-savings','m-cagr'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  empty.style.display = 'none'; wrap.style.display = 'block'; banner.style.display = 'flex';
+
+  const latest = data[data.length-1];
+  const prev   = data.length > 1 ? data[data.length-2] : null;
+
+  // Total
+  setMetric('m-total', latest.total, latest.month, prev?.total);
+
+  // Debt
+  document.getElementById('m-debt').textContent  = fmtN(latest.debt);
+  document.getElementById('m-debt').className    = 'metric-value' + (latest.debt > 0 ? ' negative' : ' positive');
+  document.getElementById('m-debt-sub').textContent = latest.debt > 0 ? '需還清' : '無負債';
+
+  // Net
+  setMetric('m-net', latest.net, latest.month, prev?.net);
+
+  // Savings rate
+  const srEl  = document.getElementById('m-savings');
+  const srSub = document.getElementById('m-savings-sub');
+  if (prev && latest.income > 0) {
+    const sr = ((latest.net - prev.net) / latest.income) * 100;
+    srEl.textContent  = Math.abs(sr).toFixed(1) + '%';
+    srEl.className    = 'metric-value ' + (sr >= 0 ? 'positive' : 'negative');
+    srSub.textContent = `收入 ${latest.income.toFixed(1)} 萬`;
+  } else {
+    srEl.textContent  = '—'; srEl.className = 'metric-value';
+    srSub.textContent = '請填寫月收入';
+  }
+
+  // CAGR
+  const firstPos = data.find(d => d.net > 0);
+  if (firstPos && data.indexOf(firstPos) < data.length-1) {
+    const months = data.length - 1 - data.indexOf(firstPos);
+    const cagr   = months > 0 ? (Math.pow(latest.net / firstPos.net, 12/months) - 1) * 100 : NaN;
+    const cagrEl = document.getElementById('m-cagr');
+    cagrEl.textContent = isFinite(cagr) ? fmtP(cagr) : '—';
+    cagrEl.className   = 'metric-value ' + (cagr >= 0 ? 'positive' : 'negative');
+    document.getElementById('m-cagr-sub').textContent = `${months} 個月估算`;
+  } else {
+    document.getElementById('m-cagr').textContent    = '—';
+    document.getElementById('m-cagr-sub').textContent = '需至少 2 筆';
+  }
+
+  // Goal
+  if (cachedGoal) {
+    renderGoalBanner(latest.net, cachedGoal);
+  } else {
+    document.getElementById('goalNums').innerHTML  = '尚未設定目標';
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('goalMeta').textContent = '';
+  }
+
+  renderCharts(data);
+}
+
+function setMetric(id, val, sub, prevVal) {
+  const el    = document.getElementById(id);
+  const subEl = document.getElementById(id+'-sub');
+  el.textContent = fmtN(val);
+  if (prevVal != null) {
+    const diff = val - prevVal;
+    el.className    = 'metric-value ' + (diff >= 0 ? 'positive' : 'negative');
+    subEl.textContent = (diff >= 0 ? '+' : '') + fmtN(diff) + ' vs 上月';
+  } else {
+    el.className = 'metric-value';
+    subEl.textContent = sub || '';
+  }
+}
+
+function renderGoalBanner(currentNet, goal) {
+  const pct  = Math.min(100, Math.max(0, (currentNet / goal.targetNet) * 100));
+  document.getElementById('goalNums').innerHTML =
+    `淨資產 <span>${currentNet.toFixed(1)}</span> 萬 ／ 目標 <span>${goal.targetNet}</span> 萬`;
+  document.getElementById('progressFill').style.width = pct.toFixed(1) + '%';
+  const now        = new Date();
+  const monthsLeft = (goal.targetYear - now.getFullYear()) * 12 - now.getMonth();
+  const remaining  = goal.targetNet - currentNet;
+  const perMonth   = monthsLeft > 0 ? (remaining / monthsLeft).toFixed(1) : '—';
+  document.getElementById('goalMeta').textContent =
+    `${pct.toFixed(1)}% 完成 ─ 距 ${goal.targetYear} 年還需每月增加 ${perMonth} 萬`;
+}
+
+// ── Charts ───────────────────────────────────────────────
+function renderCharts(data) {
+  const labels    = data.map(d => d.month.replace('-','/'));
+  const gridColor = 'rgba(0,0,0,0.05)';
+  const ticks     = { font:{size:11}, color:'#7a7a74' };
+
+  if (lineChart)   lineChart.destroy();
+  if (pieChart)    pieChart.destroy();
+  if (barChart)    barChart.destroy();
+  if (savingsChart) savingsChart.destroy();
+
+  // Line: total / debt / net
+  lineChart = new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'總資產', data:data.map(d=>d.total), borderColor:COLORS.cash,       backgroundColor:COLORS.cash+'18',  tension:.35, fill:true,  pointRadius:3, borderWidth:1.5 },
+      { label:'負債',  data:data.map(d=>d.debt),  borderColor:COLORS.debt,       backgroundColor:COLORS.debt+'18',  tension:.35, fill:true,  pointRadius:3, borderWidth:1.5 },
+      { label:'淨資產',data:data.map(d=>d.net),   borderColor:COLORS.net,        tension:.35, fill:false, pointRadius:3, borderWidth:2.5 },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales: { x:{ticks:{...ticks,autoSkip:true,maxRotation:0},grid:{display:false}},
+                y:{ticks:{...ticks,callback:v=>v+'萬'},grid:{color:gridColor}} } }
+  });
+  document.getElementById('line-legend').innerHTML =
+    [[COLORS.net,'淨資產'],[COLORS.cash,'總資產'],[COLORS.debt,'負債']]
+    .map(([c,l])=>`<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${l}</span>`).join('');
+
+  // Pie: asset breakdown
+  const latest = data[data.length-1];
+  pieChart = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels:['現金/存款','股票/基金','房地產'], datasets:[{
+      data:[latest.cash, latest.stock, latest.realEstate],
+      backgroundColor:[COLORS.cash, COLORS.stock, COLORS.realEstate], borderWidth:0, hoverOffset:4
+    }]},
+    options: { responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>{
+        const t = ctx.dataset.data.reduce((a,b)=>a+b,0);
+        return ` ${ctx.raw.toFixed(1)}萬 (${t>0?((ctx.raw/t)*100).toFixed(1):0}%)`;
+      }}}}
+    }
+  });
+  const tot = latest.total || 1;
+  document.getElementById('pie-legend').innerHTML =
+    [['cash','現金'],['stock','股票'],['realEstate','房產']]
+    .map(([k,l])=>`<span class="legend-item"><span class="legend-dot" style="background:${COLORS[k]}"></span>${l} ${((latest[k]/tot)*100).toFixed(0)}%</span>`).join('');
+
+  // Savings rate
+  const srLabels=[], srData=[];
+  for (let i=1; i<data.length; i++) {
+    if (data[i].income > 0) {
+      srLabels.push(data[i].month.replace('-','/'));
+      srData.push(parseFloat((((data[i].net - data[i-1].net) / data[i].income)*100).toFixed(1)));
+    }
+  }
+  savingsChart = new Chart(document.getElementById('savingsChart'), {
+    type: 'line',
+    data: { labels:srLabels, datasets:[{ data:srData,
+      borderColor:COLORS.purple, backgroundColor:'rgba(107,79,207,0.1)',
+      tension:.35, fill:true, pointRadius:3, borderWidth:2 }]},
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales: { x:{ticks:{...ticks,autoSkip:true,maxRotation:0},grid:{display:false}},
+                y:{ticks:{...ticks,callback:v=>v+'%'},grid:{color:gridColor}} } }
+  });
+
+  // Bar: net MoM
+  const diffs     = data.slice(1).map((d,i) => parseFloat((d.net - data[i].net).toFixed(1)));
+  const barColors = diffs.map(v => v >= 0 ? COLORS.stock : COLORS.debt);
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: { labels:labels.slice(1), datasets:[{data:diffs, backgroundColor:barColors, borderRadius:3}]},
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales: { x:{ticks:{...ticks,autoSkip:true},grid:{display:false}},
+                y:{ticks:{...ticks,callback:v=>v+'萬'},grid:{color:gridColor}} } }
+  });
+}
+
+// ── Save entry ───────────────────────────────────────────
+async function saveEntry() {
+  const month = document.getElementById('input-month').value;
+  if (!month) { showMsg('err','請選擇年月'); return; }
+  const data = {
+    month,
+    income:     parseFloat(document.getElementById('input-income').value) || 0,
+    cash:       parseFloat(document.getElementById('input-cash').value)   || 0,
+    stock:      parseFloat(document.getElementById('input-stock').value)  || 0,
+    realEstate: parseFloat(document.getElementById('input-re').value)     || 0,
+    debt:       parseFloat(document.getElementById('input-debt').value)   || 0,
+  };
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  const res = await api('save', { data });
+  btn.disabled = false;
+  if (res?.success) showMsg('ok', res.action === 'updated' ? '已更新！' : '已儲存！');
+  else              showMsg('err', '儲存失敗，請確認 API 設定');
+}
+
+function showMsg(type, text) {
+  const el = document.getElementById('saveMsg');
+  el.textContent = text; el.className = 'save-msg '+type; el.style.display = 'inline';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+
+// ── History ──────────────────────────────────────────────
+async function renderHistory() {
+  await loadAll();
+  const data = [...cachedData].reverse();
+  const el   = document.getElementById('history-content');
+  if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📂</div>尚無資料</div>'; return; }
+  el.innerHTML = `<table>
+    <thead><tr><th>年月</th><th>現金/存款</th><th>股票/基金</th><th>房地產</th><th>總資產</th><th>負債</th><th>淨資產</th><th>月收入</th><th></th></tr></thead>
+    <tbody>${data.map(d=>`<tr>
+      <td class="label-col">${d.month}</td>
+      <td>${d.cash.toFixed(1)}</td><td>${d.stock.toFixed(1)}</td><td>${d.realEstate.toFixed(1)}</td>
+      <td style="font-weight:500">${d.total.toFixed(1)}</td>
+      <td style="color:var(--red)">${d.debt.toFixed(1)}</td>
+      <td style="font-weight:500">${d.net.toFixed(1)}</td>
+      <td>${d.income > 0 ? d.income.toFixed(1) : '—'}</td>
+      <td><button class="btn btn-ghost" onclick="deleteEntry('${d.month}')">刪除</button></td>
+    </tr>`).join('')}</tbody>
+  </table>
+  <p style="font-size:11px;color:var(--muted);margin-top:12px;font-family:var(--mono)">單位：萬元</p>`;
+}
+
+async function deleteEntry(month) {
+  if (!confirm(`確定刪除 ${month} 的紀錄？`)) return;
+  const res = await api('delete', { month });
+  if (res?.success) renderHistory(); else alert('刪除失敗');
+}
+
+// ── Goal modal ───────────────────────────────────────────
+function openGoalModal() {
+  document.getElementById('goal-net').value  = cachedGoal?.targetNet  || 1000;
+  document.getElementById('goal-year').value = cachedGoal?.targetYear || (new Date().getFullYear()+10);
+  document.getElementById('goalModal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('goalModal').style.display = 'none'; }
+function bgClose(e) { if (e.target === document.getElementById('goalModal')) closeModal(); }
+
+async function saveGoal() {
+  const goal = {
+    targetNet:  parseFloat(document.getElementById('goal-net').value)  || 1000,
+    targetYear: parseInt(document.getElementById('goal-year').value)   || (new Date().getFullYear()+10),
+  };
+  document.getElementById('goalSaveBtn').disabled = true;
+  const res = await api('saveGoal', { goal });
+  document.getElementById('goalSaveBtn').disabled = false;
+  if (res?.success) {
+    cachedGoal = goal;
+    closeModal();
+    const latest = cachedData[cachedData.length-1];
+    if (latest) renderGoalBanner(latest.net, goal);
+  } else {
+    alert('儲存失敗，請確認 API 設定');
+  }
+}
+
+// ── Export CSV ───────────────────────────────────────────
+function exportCSV() {
+  const data = [...cachedData].sort((a,b) => a.month.localeCompare(b.month));
+  if (!data.length) { alert('尚無資料可匯出'); return; }
+  const header = '年月,現金/存款,股票/基金,房地產,總資產,負債,淨資產,月收入';
+  const rows   = data.map(d => `${d.month},${d.cash},${d.stock},${d.realEstate},${d.total},${d.debt},${d.net},${d.income||0}`);
+  const blob   = new Blob(['\uFEFF'+header+'\n'+rows.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a      = Object.assign(document.createElement('a'), { href:URL.createObjectURL(blob), download:`資產紀錄_${new Date().toISOString().slice(0,10)}.csv` });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Init ─────────────────────────────────────────────────
+document.getElementById('input-month').value = new Date().toISOString().slice(0,7);
+if (API_URL === "YOUR_SCRIPT_URL") {
+  document.getElementById('configBanner').style.display = 'block';
+  setSyncStatus('err', '未設定 API');
+} else {
+  renderDashboard();
+}
+</script>
+</body>
+</html>
