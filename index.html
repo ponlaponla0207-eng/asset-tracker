@@ -135,7 +135,7 @@
 <div class="shell">
 
   <!-- ★ 將 YOUR_SCRIPT_URL 換成你的 Apps Script 部署網址 -->
-  <script>const API_URL = "https://script.google.com/macros/s/AKfycbwgc_wtHdTSTalsK8aq1jOfv6tMAecR2bSrpyoilj8-8HlcC1DMCsGrlng_u3rGGJ0g5w/exec";</script>
+  <script>const API_URL = "https://script.google.com/macros/s/AKfycbw72ElsGxDKIGg8wl9jik1KtHodN0DMYushgP7F2xXTIY4bZIsO9cyYbfAGX_ttkAtmow/exec";</script>
 
   <header class="site-header">
     <div>
@@ -288,14 +288,13 @@ async function api(action, body = {}) {
   }
   setLoading(true);
   try {
-    const isGet = action === 'getAll' || action === 'getGoal';
-    const url   = isGet ? `${API_URL}?action=${action}` : API_URL;
-    const opts  = isGet ? {} : {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...body })
-    };
-    const res  = await fetch(url, opts);
+    // 全部改用 GET + URL 參數，避免 file:// 的 CORS 問題
+    const params = new URLSearchParams({ action });
+    if (Object.keys(body).length > 0) {
+      params.set('payload', JSON.stringify(body));
+    }
+    const url = `${API_URL}?${params.toString()}`;
+    const res  = await fetch(url);
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     setSyncStatus('ok', '已同步');
